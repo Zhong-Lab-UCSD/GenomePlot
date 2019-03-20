@@ -1,0 +1,17 @@
+{
+  "name": "genome-plot",
+  "version": "0.1.0",
+  "description": "Plot data across the entire genome with chromIdeoBand",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Xiaoyi Cao",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@givengine/chrom-region": "^0.3.3",
+    "commander": "^2.19.0",
+    "d3": "^5.9.2",
+    "jsdom": "^14.0.0"
+  }
+}
