@@ -23,6 +23,7 @@ const util = require('util')
 const readFilePromise = util.promisify(fs.readFile)
 
 const jsdom = require('jsdom')
+const { JSDOM } = jsdom
 const ChromRegion = require('@givengine/chrom-region')
 const d3 = require('d3')
 const program = require('commander')
@@ -300,7 +301,7 @@ function parseCytobandIdeoFile (fileContent, chromosomes) {
  *    ["chr2", "chr3"]
  *  ]
  * ```
- * 
+ *
  * @param {Array<Chromosome>} chromosomeList - List of chromosomes to be
  *  stacked
  * @returns {Array<Array<Chromosome>>} Stacked chromosomes
@@ -397,10 +398,10 @@ var readChromInfoPromise
 
 if (program.chromSizes) {
   readChromInfoPromise = readFilePromise(program.chromSizes, 'utf8')
-    .then(result => parseChromSizeFile(result, program.scale))
+    .then(result => parseChromSizeFile(result))
 } else {
   readChromInfoPromise = readFilePromise(program.cytobandIdeo, 'utf8')
-    .then(result => parseCytobandIdeoFile(result, program.scale))
+    .then(result => parseCytobandIdeoFile(result))
 }
 
 // Filter non-regular and/or mito chromosomes
@@ -436,7 +437,7 @@ if (program.stacked) {
   })
 }
 
-const document = jsdom.jsdom()
+const { document } = (new JSDOM()).window
 var mainSvg
 
 /**
@@ -475,12 +476,12 @@ readChromInfoPromise = readChromInfoPromise.then(chromosomes => {
   return chromosomes
 })
 
-/** 
+/**
  * *   Rasterize every chromosome with scale
  * *   Read BED data and put them into the rasters
  */
 
-readDataPromise = readDataPromise.map((dataPromise, dataIndex) => 
+readDataPromise = readDataPromise.map((dataPromise, dataIndex) =>
   Promise.all([dataPromise, readChromInfoPromise]).then(resultArray => {
     let fileContent = resultArray[0]
     if (!fileContent) { // read file failed
@@ -488,7 +489,7 @@ readDataPromise = readDataPromise.map((dataPromise, dataIndex) =>
     }
     let label = program.labels[dataIndex] || program.args[dataIndex]
     let chromosomes = resultArray[1]
-    chromosomes.forEach(chromosome => 
+    chromosomes.forEach(chromosome =>
       chromosome.initData(label)
     )
     fileContent.trim().split('\n').forEach(line => {
@@ -521,25 +522,25 @@ var allDataDonePromise = Promise.all(readDataPromise).then(
       : program.chromosomeBarHeight)
   svgHeight = chromosomeStacks.length * (svgEntryHeight + program.gap) -
     program.gap
-    
+
   mainSvg = d3.select(document.body).append('svg')
     .attr('width', svgWidth)
     .attr('height', svgHeight)
-    .append("defs")
-    .append("pattern")
+    .append('defs')
+    .append('pattern')
     .attr({
-      id: "hatch_fill",
-      width: "8",
-      height: "8",
-      patternUnits: "userSpaceOnUse",
-      patternTransform: "rotate(60)"
+      id: 'hatch_fill',
+      width: '8',
+      height: '8',
+      patternUnits: 'userSpaceOnUse',
+      patternTransform: 'rotate(60)'
     })
-    .append("rect")
+    .append('rect')
     .attr({
-      width: "2",
-      height: "8",
-      transform: "translate(0,0)",
-      fill: "#000000"
+      width: '2',
+      height: '8',
+      transform: 'translate(0,0)',
+      fill: '#000000'
     })
   return results[0]
 })
@@ -598,7 +599,6 @@ allDataDonePromise = allDataDonePromise.then(chromosomes => {
 /**
  * *   Write the main `<svg>` element to stdout
  */
-allDataDonePromise = allDataDonePromise.then(chromosomes => {
+allDataDonePromise.then(chromosomes => {
   process.stdout.write(d3.select(document.body).html())
 })
-
