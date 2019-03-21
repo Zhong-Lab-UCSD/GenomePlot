@@ -75,7 +75,7 @@ class Chromosome extends ChromRegion {
     if (this.end < cytoband.end) {
       this.end = cytoband.end
     }
-    this.cytobands.sort(ChromRegion.compare)
+    this.cytobands.sort(this.constructor.compare)
   }
 
   get isNumbered () {
@@ -127,27 +127,40 @@ class Chromosome extends ChromRegion {
 
   static getCytobandColor (band) {
     switch (band.gieStain) {
-      case 'gpos25':
-        return '#DDDDDD'
-      case 'gpos50':
-        return '#BBBBBB'
-      case 'gpos75':
       case 'stalk':
         return '#999999'
       case 'gpos100':
       case 'gvar':
         return '#777777'
-      default:
+      case 'gneg':
         return '#FFFFFF'
+      default:
+        // calculate color based on `gposxxx` value
+        let result = band.gieStain.match(/^gpos(\d+)/)
+        if (!result) {
+          return '#FFFFFF'
+        } else {
+          let gposValue = parseInt(result[1])
+          if (gposValue <= 0) {
+            return '#FFFFFF'
+          } else if (gposValue >= 100) {
+            return '#777777'
+          } else {
+            // calculate the intermediate value
+            return '#' + parseInt(
+              (0x77 - 0xff) * gposValue / 100 + 0xff
+            ).toString(16).repeat(3)
+          }
+        }
     }
   }
 
-  drawArm (svgElem, arm, params) {
+  drawArm (svgElem, y, arm, params) {
     // Steps
     // 1. draw arms and centromere
     svgElem.append('rect')
       .attr('x', arm.start / this.constructor.dataScale)
-      .attr('y', svgElem.attr('height') - params.cytobandHeight)
+      .attr('y', y)
       .attr('width', (arm.end - arm.start) / this.constructor.dataScale)
       .attr('height', params.cytobandHeight)
       .attr('stroke', '#000000')
@@ -158,7 +171,7 @@ class Chromosome extends ChromRegion {
       .attr('id', arm.name)
       .append('rect')
       .attr('x', arm.start / this.constructor.dataScale)
-      .attr('y', svgElem.attr('height') - params.cytobandHeight)
+      .attr('y', y)
       .attr('width', (arm.end - arm.start) / this.constructor.dataScale)
       .attr('height', params.cytobandHeight)
       .attr('rx', params.cytobandHeight * 0.25)
@@ -168,26 +181,28 @@ class Chromosome extends ChromRegion {
       if (arm.overlaps(band)) {
         svgElem.append('rect')
           .attr('x', band.start / this.constructor.dataScale)
-          .attr('y', svgElem.attr('height') - params.cytobandHeight)
+          .attr('y', y)
           .attr('clip-path', 'url(#' + arm.name + ')')
           .attr('width', (band.end - band.start) / this.constructor.dataScale)
           .attr('height', params.cytobandHeight)
+          .attr('stroke', 'none')
           .attr('fill', this.constructor.getCytobandColor(band))
         if (band.gieStain === 'gvar' || band.gieStain === 'stalk') {
           // add hatch fill to these two types of bands
           svgElem.append('rect')
             .attr('x', band.start / this.constructor.dataScale)
-            .attr('y', svgElem.attr('height') - params.cytobandHeight)
+            .attr('y', y)
             .attr('clip-path', 'url(#' + arm.name + ')')
             .attr('width', (band.end - band.start) / this.constructor.dataScale)
             .attr('height', params.cytobandHeight)
+            .attr('stroke', 'none')
             .attr('fill', 'url(#hatch_fill)')
         }
       }
     })
   }
 
-  drawSelf (svgElem, params) {
+  drawSelf (svgElem, params, y) {
     if (this.cytobands.length) {
       let arms
       if (this.centromere) {
@@ -210,12 +225,12 @@ class Chromosome extends ChromRegion {
         // draw only one arm
         arms = [this]
       }
-      arms.forEach(arm => this.drawArm(svgElem, arm, params))
+      arms.forEach(arm => this.drawArm(svgElem, y, arm, params))
     } else {
       // no cytobands, just draw a bar
       svgElem.append('rect')
         .attr('x', 0)
-        .attr('y', svgElem.attr('height') - params.chromosomeBarHeight)
+        .attr('y', y)
         .attr('width', this.end / this.constructor.dataScale)
         .attr('height', params.chromosomeBarHeight)
         .attr('fill', '#000000')
@@ -259,10 +274,7 @@ function parseChromSizeFile (fileContent, chromosomes) {
  * *   `name`: name of the band
  * *   `gieStain`: one of the following:
  *     *   `gneg`: negative Giemsa stain (interband)
- *     *   `gpos25`: 25% Giemsa stain
- *     *   `gpos50`: 50% Giemsa stain
- *     *   `gpos75`: 75% Giemsa stain
- *     *   `gpos100`: 100% Giemsa stain
+ *     *   `gpos***`: ***% Giemsa stain
  *     *   `acen`: centromere
  *     *   `gvar`: chromosomal structural element
  *     *   `stalk`: chromosome arm
@@ -352,27 +364,30 @@ program
     'Horizontal scale (in number of bps per point). ' +
     'Note that this will become the smallest distinguishable feature ' +
     'in the final output.',
-    parseInt, 100000)
+    val => parseInt(val), 100000)
   .option('-b, --with-borders',
     'Add borders to data entries. This will make tiny data more visible at ' +
     'the expense of resolution and fidelity.')
   .option('-h, --height <height>', 'Vertical height for every dataset.',
-    parseFloat, 5)
+    val => parseFloat(val), 5)
   .option('--cytoband-height <cytobandHeight>',
-    'Vertical height for cytoband ideograms', parseFloat, 10)
+    'Vertical height for cytoband ideograms', val => parseFloat(val), 10)
   .option('--chromosome-bar-height <cytobandHeight>',
     'Vertical height for chromosome bar (if no cytoband ideogram is drawn',
-    parseFloat, 1)
+    val => parseFloat(val), 1)
   .option('-G, --gap <gap>',
-    'Vertical gap between chromosomes', parseFloat, 15)
+    'Vertical gap between chromosomes', val => parseFloat(val), 15)
   .option('-g, --in-gap <inGap>',
-    'Vertical gap between datasets within a chromosome.', parseFloat, 2)
+    'Vertical gap between datasets within a chromosome.',
+    val => parseFloat(val), 2)
   .option('--horizontal-gap <horiGap>',
-    'Minimal horizontal gap when stacking chromosomes', parseFloat, 50)
+    'Minimal horizontal gap when stacking chromosomes',
+    val => parseFloat(val), 50)
   .option('--text-size <textSize>',
-    'Size of the text in the labels (px)', parseFloat, 16)
+    'Size of the text in the labels (px)', val => parseFloat(val), 16)
   .option('--text-gap <textGap>',
-    'Minimal horizontal gap between text and the figure', parseFloat, 10)
+    'Minimal horizontal gap between text and the figure',
+    val => parseFloat(val), 10)
   .option('--include-non-regular',
     'Include the chromosomes that are not regular ' +
     '("chrUn", alternatives, etc.)')
@@ -406,7 +421,7 @@ if (program.chromSizes) {
 
 // Filter non-regular and/or mito chromosomes
 readChromInfoPromise = readChromInfoPromise.then(
-  chromosomes => chromosomes.filter(chromosome => (
+  chromosomes => chromosomes.sort(Chromosome.compare).filter(chromosome => (
     (program.includeNonRegular || chromosome.isRegular) ||
     (program.includeMito && chromosome.isMitochondrial)
   ))
@@ -437,7 +452,7 @@ if (program.stacked) {
   })
 }
 
-const { document } = (new JSDOM()).window
+const { document } = (new JSDOM('', { pretendToBeVisual: true })).window
 var mainSvg
 
 /**
@@ -450,27 +465,22 @@ readChromInfoPromise = readChromInfoPromise.then(chromosomes => {
   chromosomeStacks.forEach((stackEntry, stackIndex) => {
     let internalWidth = 0
     stackEntry.forEach((chromosome, index) => {
-      let textMeasureElem = svgPlaceHolder.append('text')
-        .style('font-family', 'Arial, Helvetica, sans-serif')
-        .style('font-size', program.textSize + 'px')
-        .text(chromosome.name)
-      let currTextWidth = textMeasureElem.getBBox().width
+      let currTextWidth = chromosome.name.length * 0.6 * program.textSize
       if (textLabelWidth[index] < currTextWidth) {
-        textLabelWidth = currTextWidth
+        textLabelWidth[index] = currTextWidth
       }
-      textMeasureElem.remove()
       internalWidth += chromosome.end / program.scale
       if (index > 0) {
-        internalWidth += program.horizonalGap
+        internalWidth += program.horizontalGap
       }
     })
     if (maxInternalWidth < internalWidth) {
       maxInternalWidth = internalWidth
     }
   })
-  svgWidth = maxInternalWidth + program.textGap + textLabelWidth[0]
-  if (program.stack && textLabelWidth[1] > 0) {
-    svgWidth += program.textGap + textLabelWidth[1]
+  svgWidth = maxInternalWidth + program.textGap + textLabelWidth[0] + 2
+  if (program.stacked && textLabelWidth[1] > 0) {
+    svgWidth += program.textGap + textLabelWidth[1] + 2
   }
   svgPlaceHolder.remove()
   return chromosomes
@@ -520,28 +530,26 @@ var allDataDonePromise = Promise.all(readDataPromise).then(
     (program.cytobandIdeo
       ? program.cytobandHeight
       : program.chromosomeBarHeight)
-  svgHeight = chromosomeStacks.length * (svgEntryHeight + program.gap) -
+  svgHeight = chromosomeStacks.length * (svgEntryHeight + 2 + program.gap) -
     program.gap
 
   mainSvg = d3.select(document.body).append('svg')
     .attr('width', svgWidth)
     .attr('height', svgHeight)
-    .append('defs')
+    .attr('version', 1.1)
+    .attr('xmlns', 'http://www.w3.org/2000/svg')
+  mainSvg.append('defs')
     .append('pattern')
-    .attr({
-      id: 'hatch_fill',
-      width: '8',
-      height: '8',
-      patternUnits: 'userSpaceOnUse',
-      patternTransform: 'rotate(60)'
-    })
+    .attr('id', 'hatch_fill')
+    .attr('width', '8')
+    .attr('height', '8')
+    .attr('patternUnits', 'userSpaceOnUse')
+    .attr('patternTransform', 'rotate(60)')
     .append('rect')
-    .attr({
-      width: '2',
-      height: '8',
-      transform: 'translate(0,0)',
-      fill: '#000000'
-    })
+    .attr('width', '2')
+    .attr('height', '8')
+    .attr('transform', 'translate(0,0)')
+    .attr('fill', '#000000')
   return results[0]
 })
 
@@ -562,9 +570,10 @@ allDataDonePromise = allDataDonePromise.then(chromosomes => {
             program.textGap - svgEntryWidth
         )
         .attr('y', stackIndex * (svgEntryHeight + program.gap))
-        .attr('width', svgEntryWidth)
-        .attr('height', svgEntryHeight)
-        .attr('viewBox', '0 0 ' + svgEntryWidth + ' ' + svgEntryHeight)
+        .attr('width', svgEntryWidth + 2)
+        .attr('height', svgEntryHeight + 2)
+        .attr('viewBox', '-1 -1 ' + (svgEntryWidth + 1) + ' ' +
+          (svgEntryHeight + 1))
 
       /**
        *     *   Draw rasterized BED data on the chromosome
@@ -576,7 +585,11 @@ allDataDonePromise = allDataDonePromise.then(chromosomes => {
       /**
        *     *   Draw cytoband ideogram (if any) of the chromosome
        */
-      chromosome.drawSelf(subSvg, program)
+      let chromosomeY = svgEntryHeight -
+        (program.cytobandIdeo
+          ? program.cytobandHeight
+          : program.chromosomeBarHeight)
+      chromosome.drawSelf(subSvg, program, chromosomeY)
 
       /**
        *     *   Create chromosomal label **outside** the sub-`<svg>` element
