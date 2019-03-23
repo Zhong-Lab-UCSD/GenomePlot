@@ -28,13 +28,21 @@ const ChromRegion = require('@givengine/chrom-region')
 const d3 = require('d3')
 const program = require('commander')
 
+/**
+ * Color palette
+ * This palette is adapted from Paul Tol's "Muted" qualitative color scheme
+ * https://personal.sron.nl/~pault/
+ */
 const colorPalette = [
-  '#4477AA',
-  '#66CCEE',
-  '#228833',
-  '#CCBB44',
-  '#EE6677',
-  '#AA3377'
+  '#332288',
+  '#88CCEE',
+  '#44AA99',
+  '#117733',
+  '#999933',
+  '#DDCC77',
+  '#CC6677',
+  '#882255',
+  '#AA4499'
 ]
 
 var chromosomeStacks = []
