@@ -107,8 +107,8 @@ class Chromosome extends ChromRegion {
     if (this.chr !== bedEntry.chr) {
       return
     }
-    for (let i = parseInt(bedEntry.start / this.constructor.dataScale);
-      i <= parseInt(bedEntry.end / this.constructor.dataScale);
+    for (let i = Math.round(bedEntry.start / this.constructor.dataScale);
+      i <= Math.round(bedEntry.end / this.constructor.dataScale);
       i++
     ) {
       this.data[label][i] = (this.data[label][i] || 0) + 1
@@ -381,9 +381,9 @@ function filterChromosome (chromosomes, includeNonRegular, includeMito) {
  * @function
  * Calculate the size of the final output, build the main `<svg>` element
  * @param {Array<Array<Chromosome>>} chromosomeStacks Stacks of chromosome
- * @param {Document} document JSDOM document object
+ * @param {Node} containerDom Container DOM object
  * @param {object} params Additional parameters
- * @param {number} params.stacked Whether chromosome shall be stacked to make
+ * @param {boolean} params.stacked Whether chromosome shall be stacked to make
  * a two-column plot.
  * @param {number} params.textSize Size of the text, in px.
  * @param {number} params.scale Scale of the final figure, in bp / px.
@@ -393,8 +393,8 @@ function filterChromosome (chromosomes, includeNonRegular, includeMito) {
  * in px.
  * @returns {SvgWidths}
  */
-function calcSvgWidths (chromosomeStacks, document, params) {
-  var svgPlaceHolder = d3.select(document.body).append('svg')
+function calcSvgWidths (chromosomeStacks, containerDom, params) {
+  var svgPlaceHolder = d3.select(containerDom).append('svg')
   let maxInternalWidth = 0
   let textLabelWidth = [0]
 
@@ -430,6 +430,16 @@ function calcSvgWidths (chromosomeStacks, document, params) {
   }
 }
 
+/**
+ * Add BED data to chromosomes
+ *
+ * @param {string} bedFileContent Content of the BED file
+ * @param {string} label label of the BED file, used to distinguish multiple BED
+ * files.
+ * @param {Array<Chromosome>} chromosomes The array of chromosomes
+ * @returns {Array<Chromosome>|null} Return `chromosomes` if successful, `null`
+ * if unsuccessful (no data in `bedFileContent`)
+ */
 function addBedData (bedFileContent, label, chromosomes) {
   if (!bedFileContent) { // read file failed
     return null
@@ -465,9 +475,13 @@ function addBedData (bedFileContent, label, chromosomes) {
  * @param {object} params Additional parameters
  * @param {string} [params.chromSizes] Chromosome size file name.
  * @param {string} [params.cytobandIdeo] CytobandIdeo file name.
- * @param {number} params.stacked Whether chromosome shall be stacked to make
+ * @param {boolean} params.stacked Whether chromosome shall be stacked to make
  * a two-column plot.
  * @param {number} params.scale Scale of the final figure, in bp / px.
+ * @param {boolean} [params.includeNonRegular] Whether non-regular chromosomes
+ * (`chrUn` and alike) shall be included.
+ * @param {boolean} [params.includeMito] Whether mitochondria chromosomes
+ * (`chrM`) shall be included
  * @returns {ChromosomesWithStack}
  */
 async function prepareChromosomeFromFile (params) {
@@ -507,8 +521,16 @@ async function prepareChromosomeFromFile (params) {
   }
 }
 
-function _createSvgElem (document, svgWidth, svgHeight) {
-  let result = d3.select(document.body).append('svg')
+/**
+ * Create an SVG element within a container element
+ *
+ * @param {Node} containerDom
+ * @param {number} svgWidth
+ * @param {number} svgHeight
+ * @returns {SVGElement}
+ */
+function _createSvgElem (containerDom, svgWidth, svgHeight) {
+  let result = d3.select(containerDom).append('svg')
     .attr('width', svgWidth)
     .attr('height', svgHeight)
     .attr('version', 1.1)
@@ -528,6 +550,26 @@ function _createSvgElem (document, svgWidth, svgHeight) {
   return result
 }
 
+/**
+ * Draw one single chromosome stack layer
+ *
+ * @param {Array<Chromosome>} chromesomeStack One single chromosome stack
+ * @param {number} stackIndex Index of the stack
+ * @param {SVGElement} mainSvg SVG element
+ * @param {number} svgWidth Width of the SVG element.
+ * @param {number} svgEntryHeight Height of a single SVG entry, in px.
+ * @param {Array<number>} textLabelWidth Width of text labels, in px.
+ * @param {object} params Additional parameters
+ * @param {number} params.gap Gap between chromosome stacks, in px.
+ * @param {number} params.textGap Gap between chromosome and its label
+ * in px.
+ * @param {Array<string>} params.labels Labels of all the data.
+ * @param {string} [params.cytobandIdeo] CytobandIdeo file name.
+ * @param {number} [params.cytobandHeight] Height of cytoband (if cytoband is
+ * present), in px.
+ * @param {number} [params.chromosomeBarHeight] Height of the chromosome bar
+ * (if cytoband is not present), in px.
+ */
 function _drawSingleChromosomeStack (
   chromesomeStack, stackIndex, mainSvg, svgWidth, svgEntryHeight,
   textLabelWidth, params
@@ -560,9 +602,7 @@ function _drawSingleChromosomeStack (
       *     *   Draw cytoband ideogram (if any) of the chromosome
       */
     let chromosomeY = svgEntryHeight -
-      (params.cytobandIdeo
-        ? params.cytobandHeight
-        : params.chromosomeBarHeight)
+      (params.cytobandIdeo ? params.cytobandHeight : params.chromosomeBarHeight)
     chromosome.drawSelf(subSvg, params, chromosomeY)
 
     /**
@@ -581,12 +621,47 @@ function _drawSingleChromosomeStack (
   })
 }
 
-function drawGenomePlot (chromosomes, chromosomeStacks, bedFiles, params) {
-  const { document } = (new JSDOM('', { pretendToBeVisual: true })).window
+/**
+ *
+ *
+ * @param {Node} containerDom
+ * @param {Array<chromosome>} chromosomes
+ * @param {Array<Array<Chromosome>>} chromosomeStacks
+ * @param {Array<string>} bedFiles
+ * @param {object} params Additional parameters
+ * @param {string} [params.chromSizes] Chromosome size file name.
+ * @param {string} [params.cytobandIdeo] CytobandIdeo file name.
+ * @param {boolean} [params.includeNonRegular] Whether non-regular chromosomes
+ * (`chrUn` and alike) shall be included.
+ * @param {boolean} [params.includeMito] Whether mitochondria chromosomes
+ * (`chrM`) shall be included
+ * @param {number} params.height Height of each data track, in px.
+ * @param {number} params.gap Gap between chromosome stacks, in px.
+ * @param {number} params.inGap Gap between different BED tracks, in px.
+ * @param {number} params.textSize Size of the text, in px.
+ * @param {number} params.textGap Horizontal gap between chromosome and its
+ * label in px.
+ * @param {number} params.horizontalGap Horizontal gap between stacked
+ * chromosomes in px.
+ * @param {boolean} params.stacked Whether chromosome shall be stacked to make
+ * a two-column plot.
+ * @param {Array<string>} params.labels Labels of all the data.
+ * @param {number} params.scale Scale of the final figure, in bp / px.
+ * @param {number} [params.cytobandHeight] Height of cytoband (if cytoband is
+ * present), in px.
+ * @param {number} [params.chromosomeBarHeight] Height of the chromosome bar
+ * (if cytoband is not present), in px.
+ * @returns {SVGElement}
+ */
+function drawGenomePlot (
+  containerDom, chromosomes, chromosomeStacks, bedFiles, params
+) {
+  containerDom = containerDom ||
+    (new JSDOM('', { pretendToBeVisual: true })).window.document.body
   var mainSvg
 
   var { svgWidth, textLabelWidth } =
-    calcSvgWidths(chromosomeStacks, document, params)
+    calcSvgWidths(chromosomeStacks, containerDom, params)
   var svgHeight = 0
   var svgEntryHeight = 0
 
@@ -608,7 +683,7 @@ function drawGenomePlot (chromosomes, chromosomeStacks, bedFiles, params) {
   svgHeight = chromosomeStacks.length * (svgEntryHeight + 2 + params.gap) -
     params.gap
 
-  mainSvg = _createSvgElem(document, svgWidth, svgHeight)
+  mainSvg = _createSvgElem(containerDom, svgWidth, svgHeight)
 
   /**
    * *   Draw every chromosome
@@ -621,9 +696,40 @@ function drawGenomePlot (chromosomes, chromosomeStacks, bedFiles, params) {
   /**
    * *   Write the main `<svg>` element to stdout
    */
-  return d3.select(document.body).html()
+  return mainSvg
 }
 
+/**
+ * @async
+ * Create a genome plot from annotation files and data files.
+ *
+ * @param {object} params All parameters, see below.
+ * @param {string} [params.chromSizes] Chromosome size file name.
+ * @param {string} [params.cytobandIdeo] CytobandIdeo file name.
+ * @param {Array<string>} params.args Data file names.
+ * @param {boolean} [params.includeNonRegular] Whether non-regular chromosomes
+ * (`chrUn` and alike) shall be included.
+ * @param {boolean} [params.includeMito] Whether mitochondria chromosomes
+ * (`chrM`) shall be included
+ * @param {number} params.height Height of each data track, in px.
+ * @param {number} params.gap Gap between chromosome stacks, in px.
+ * @param {number} params.inGap Gap between different BED tracks, in px.
+ * @param {number} params.textSize Size of the text, in px.
+ * @param {number} params.textGap Horizontal gap between chromosome and its
+ * label in px.
+ * @param {number} params.horizontalGap Horizontal gap between stacked
+ * chromosomes in px.
+ * @param {boolean} params.stacked Whether chromosome shall be stacked to make
+ * a two-column plot.
+ * @param {Array<string>} params.labels Labels of all the data.
+ * @param {number} params.scale Scale of the final figure, in bp / px.
+ * @param {number} [params.cytobandHeight] Height of cytoband (if cytoband is
+ * present), in px.
+ * @param {number} [params.chromosomeBarHeight] Height of the chromosome bar
+ * (if cytoband is not present), in px.
+ * @returns {string} The SVG HTML code for the final result, can be directly
+ * written into a `.svg` file.
+ */
 async function createGenomePlot (params) {
   var readDataPromise = params.args.map(arg =>
     readFilePromise(arg, 'utf8').catch(err => {
@@ -634,7 +740,8 @@ async function createGenomePlot (params) {
   var chromPromise = prepareChromosomeFromFile(params)
   var bedFiles = await Promise.all(readDataPromise)
   var { chromosomes, stacks: chromosomeStacks } = await chromPromise
-  return drawGenomePlot(chromosomes, chromosomeStacks, bedFiles, params)
+  return drawGenomePlot(null, chromosomes, chromosomeStacks, bedFiles, params)
+    .node().outerHTML
 }
 
 module.exports.drawGenomePlot = drawGenomePlot
