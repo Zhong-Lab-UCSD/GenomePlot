@@ -33,26 +33,20 @@ const d3 = require('d3')
  * https://personal.sron.nl/~pault/
  */
 const colorPalette = [
-  '#332288',
-  '#88CCEE',
-  '#44AA99',
-  '#117733',
-  '#999933',
-  '#DDCC77',
-  '#CC6677',
-  '#882255',
-  '#AA4499'
+  '#CC6677', // rose
+  '#332288', // indigo
+  '#DDCC77', // sand
+  '#117733', // green
+  '#88CCEE', // cyan
+  '#882255', // wine
+  '#44AA99', // teal
+  '#999933', // olive
+  '#AA4499' // purple
 ]
 
 const cytobandColor = '#777777'
 const BORDER_GAP = 1
 const TEXT_RATIO = 0.6
-
-var chromosomeStacks = []
-var svgWidth
-var textLabelWidth = [0, 0]
-var svgHeight = 0
-var svgEntryHeight = 0
 
 /**
  * @class Chromosome
@@ -166,14 +160,12 @@ class Chromosome extends ChromRegion {
 
   drawArm (svgElem, y, arm, params) {
     // Steps
-    // 1. draw arms and centromere
+    // 1. draw arms and centromere backgrounds
     svgElem.append('rect')
       .attr('x', arm.start / this.constructor.dataScale)
       .attr('y', y)
       .attr('width', (arm.end - arm.start) / this.constructor.dataScale)
       .attr('height', params.cytobandHeight)
-      .attr('stroke', '#000000')
-      .attr('stroke-width', 1)
       .attr('fill', '#FFFFFF')
       .attr('rx', params.cytobandHeight * 0.25)
       .attr('ry', params.cytobandHeight * 0.25)
@@ -211,6 +203,17 @@ class Chromosome extends ChromRegion {
         }
       }
     })
+    // 3. draw arms and centromere borders
+    svgElem.append('rect')
+      .attr('x', arm.start / this.constructor.dataScale)
+      .attr('y', y)
+      .attr('width', (arm.end - arm.start) / this.constructor.dataScale)
+      .attr('height', params.cytobandHeight)
+      .attr('stroke', '#000000')
+      .attr('stroke-width', 1)
+      .attr('fill', 'none')
+      .attr('rx', params.cytobandHeight * 0.25)
+      .attr('ry', params.cytobandHeight * 0.25)
   }
 
   drawSelf (svgElem, params, y) {
@@ -351,85 +354,15 @@ function getStackedChromosomes (chromosomes) {
 }
 
 /**
- * Parse input arguments
+ * Return sorted and filtered chromosomes
+ *
+ * @param {Array<Chromosome>} chromosomes Chromosome array
+ * @param {boolean} includeNonRegular Whether non-regular chromosomes
+ * (`chrUn` and alike) shall be included.
+ * @param {boolean} includeMito Whether mitochondria chromosomes (`chrM`) shall
+ * be included
+ * @returns {Array<Chromosome>} Filtered chromosomes
  */
-
-function list (value) {
-  return value.trim().split(',')
-}
-
-program
-  .version('0.1.0', '-v, --version')
-  .usage('[options] <bedFiles ...>')
-  .option('-c, --chrom-sizes <file>',
-    'A file in UCSC chrom.sizes format')
-  .option('-i, --cytoband-ideo <file>',
-    'A file in UCSC cytobandIdeo format')
-  .option('-l, --labels <labelList>',
-    'A list of labels to be used in the figure, separated by comma(,).', list)
-  .option('-t, --stacked',
-    'Whether stack chromosomes together to create a shorted result. ' +
-    'Numbered chromosomes will be complimentarily stacked ' +
-    'and sex chromosomes will be separated stacked.')
-  .option('-s, --scale <n>',
-    'Horizontal scale (in number of bps per point). ' +
-    'Note that this will become the smallest distinguishable feature ' +
-    'in the final output.',
-    val => parseInt(val), 100000)
-  .option('-b, --with-borders',
-    'Add borders to data entries. This will make tiny data more visible at ' +
-    'the expense of resolution and fidelity.')
-  .option('-e, --height <height>', 'Vertical height for every dataset.',
-    val => parseFloat(val), 5)
-  .option('-y, --cytoband-height <cytobandHeight>',
-    'Vertical height for cytoband ideograms', val => parseFloat(val), 10)
-  .option('-r, --chromosome-bar-height <cytobandHeight>',
-    'Vertical height for chromosome bar (if no cytoband ideogram is drawn',
-    val => parseFloat(val), 1)
-  .option('-G, --gap <gap>',
-    'Vertical gap between chromosomes', val => parseFloat(val), 15)
-  .option('-g, --in-gap <inGap>',
-    'Vertical gap between datasets within a chromosome.',
-    val => parseFloat(val), 2)
-  .option('-z, --horizontal-gap <horiGap>',
-    'Minimal horizontal gap when stacking chromosomes',
-    val => parseFloat(val), 50)
-  .option('-x, --text-size <textSize>',
-    'Size of the text in the labels (px)', val => parseFloat(val), 16)
-  .option('-p, --text-gap <textGap>',
-    'Minimal horizontal gap between text and the figure',
-    val => parseFloat(val), 10)
-  .option('-N, --include-non-regular',
-    'Include the chromosomes that are not regular ' +
-    '("chrUn", alternatives, etc.)')
-  .option('-M, --include-mito', 'Include the mitochondrial chromosome "chrM"')
-  .parse(process.argv)
-
-/**
- * Read cytoBandIdeo / chromSizes to determine the chromosome structure
- */
-
-if (!process.argv.slice(2).length || !program.args.length ||
-  (!program.chromSizes && !program.cytobandIdeo)) {
-  console.log('Please specify BED data files and either chromosomal size ' +
-    'information or cytoband ideogram information!')
-  program.outputHelp()
-  process.exit(1)
-}
-
-program.labels = program.labels || program.args
-Chromosome.dataScale = program.scale
-
-var readChromInfoPromise
-
-if (program.chromSizes) {
-  readChromInfoPromise = readFilePromise(program.chromSizes, 'utf8')
-    .then(result => parseChromSizeFile(result))
-} else {
-  readChromInfoPromise = readFilePromise(program.cytobandIdeo, 'utf8')
-    .then(result => parseCytobandIdeoFile(result))
-}
-
 function filterChromosome (chromosomes, includeNonRegular, includeMito) {
   return chromosomes.sort(Chromosome.compare).filter(chromosome => (
     (includeNonRegular || chromosome.isRegular) ||
@@ -438,35 +371,63 @@ function filterChromosome (chromosomes, includeNonRegular, includeMito) {
 }
 
 /**
- * Calculate the size of the final output, build the main `<svg>` element
+ * @typedef {object} SvgWidths
+ * @property {number} svgWidth Total width for the svg
+ * @property {Array<number>} textLabelWidth Width for text label(s), if two-
+ * column plot is used, there will be two width values.
  */
-function calcSvgWidth (chromosomeStacks, document) {
+
+/**
+ * @function
+ * Calculate the size of the final output, build the main `<svg>` element
+ * @param {Array<Array<Chromosome>>} chromosomeStacks Stacks of chromosome
+ * @param {Document} document JSDOM document object
+ * @param {object} params Additional parameters
+ * @param {number} params.stacked Whether chromosome shall be stacked to make
+ * a two-column plot.
+ * @param {number} params.textSize Size of the text, in px.
+ * @param {number} params.scale Scale of the final figure, in bp / px.
+ * @param {number} params.horizontalGap Horizontal gap between stacked
+ * chromosomes in px.
+ * @param {number} params.textGap Gap between chromosome and its label
+ * in px.
+ * @returns {SvgWidths}
+ */
+function calcSvgWidths (chromosomeStacks, document, params) {
   var svgPlaceHolder = d3.select(document.body).append('svg')
   let maxInternalWidth = 0
+  let textLabelWidth = [0]
+
+  if (params.stacked) {
+    textLabelWidth.push(0)
+  }
   chromosomeStacks.forEach((stackEntry, stackIndex) => {
     let internalWidth = 0
     stackEntry.forEach((chromosome, index) => {
       let currTextWidth = chromosome.name.length * TEXT_RATIO *
-        program.textSize
+        params.textSize
       if (textLabelWidth[index] < currTextWidth) {
         textLabelWidth[index] = currTextWidth
       }
-      internalWidth += chromosome.end / program.scale
+      internalWidth += chromosome.end / params.scale
       if (index > 0) {
-        internalWidth += program.horizontalGap
+        internalWidth += params.horizontalGap
       }
     })
     if (maxInternalWidth < internalWidth) {
       maxInternalWidth = internalWidth
     }
   })
-  svgWidth = maxInternalWidth + program.textGap +
+  let svgWidth = maxInternalWidth + params.textGap +
     textLabelWidth[0] + 2 * BORDER_GAP
-  if (program.stacked && textLabelWidth[1] > 0) {
-    svgWidth += program.textGap + textLabelWidth[1] + 2 * BORDER_GAP
+  if (params.stacked && textLabelWidth[1] > 0) {
+    svgWidth += params.textGap + textLabelWidth[1] + 2 * BORDER_GAP
   }
   svgPlaceHolder.remove()
-  return svgWidth
+  return {
+    svgWidth,
+    textLabelWidth
+  }
 }
 
 function addBedData (bedFileContent, label, chromosomes) {
@@ -492,139 +453,194 @@ function addBedData (bedFileContent, label, chromosomes) {
   return chromosomes
 }
 
-function drawGenomePlot (chromosomes, bedFiles, params) {
+/**
+ * @typedef {object} ChromosomesWithStack
+ * @property {Array<Chromosome>} chromosomes flattened array of chromosomes
+ * @property {Array<Array<Chromosome>>} stack Stacked chromosomes
+ *
+ * @function
+ * @async
+ * Prepare chromosome data structure for plotting
+ *
+ * @param {object} params Additional parameters
+ * @param {string} [params.chromSizes] Chromosome size file name.
+ * @param {string} [params.cytobandIdeo] CytobandIdeo file name.
+ * @param {number} params.stacked Whether chromosome shall be stacked to make
+ * a two-column plot.
+ * @param {number} params.scale Scale of the final figure, in bp / px.
+ * @returns {ChromosomesWithStack}
+ */
+async function prepareChromosomeFromFile (params) {
+  if (typeof params.scale === 'number' && params.scale > 0) {
+    Chromosome.dataScale = params.scale
+  }
+
+  let chromosomes, chromosomeStacks
+
+  if (params.chromSizes) {
+    chromosomes = await readFilePromise(params.chromSizes, 'utf8')
+      .then(result => parseChromSizeFile(result))
+  } else {
+    chromosomes = await readFilePromise(params.cytobandIdeo, 'utf8')
+      .then(result => parseCytobandIdeoFile(result))
+  }
+
   // Filter non-regular and/or mito chromosomes
-  chromosomes = filterChromosome(chromosomes)
-  var chromosomeMap = {}
-  chromosomes.forEach(chromosome =>
-    { chromosomeMap[chromosome.chr] = chromosome })
-  var chromosomeStacks
+  chromosomes = filterChromosome(
+    chromosomes, params.includeNonRegular, params.includeMito
+  )
 
   /**
-   * Calculate the size of each chromosome
-   * *   Stack chromosomes if needed
-   *     Numbered chromosomes will be grouped together in stacks
+   * *   Calculate the size of each chromosome
+   *     *   Stack chromosomes if needed
+   *         Numbered chromosomes will be grouped together in stacks
    */
-  if (program.stacked) {
+  if (params.stacked) {
     chromosomeStacks = getStackedChromosomes(chromosomes)
   } else {
     chromosomeStacks = chromosomes.map(chromosome => [chromosome])
   }
 
+  return {
+    chromosomes,
+    stacks: chromosomeStacks
+  }
+}
+
+function _createSvgElem (document, svgWidth, svgHeight) {
+  let result = d3.select(document.body).append('svg')
+    .attr('width', svgWidth)
+    .attr('height', svgHeight)
+    .attr('version', 1.1)
+    .attr('xmlns', 'http://www.w3.org/2000/svg')
+  result.append('defs')
+    .append('pattern')
+    .attr('id', 'hatch_fill')
+    .attr('width', '8')
+    .attr('height', '8')
+    .attr('patternUnits', 'userSpaceOnUse')
+    .attr('patternTransform', 'rotate(60)')
+    .append('rect')
+    .attr('width', '2')
+    .attr('height', '8')
+    .attr('transform', 'translate(0,0)')
+    .attr('fill', '#000000')
+  return result
+}
+
+function _drawSingleChromosomeStack (
+  chromesomeStack, stackIndex, mainSvg, svgWidth, svgEntryHeight,
+  textLabelWidth, params
+) {
+  chromesomeStack.forEach((chromosome, colIndex) => {
+    /**
+      *     *   Create the sub-`<svg>` element at the correct location
+      */
+    let svgEntryWidth = chromosome.end / Chromosome.dataScale + 1
+    let subSvg = mainSvg.append('svg')
+      .attr('x', !colIndex
+        ? textLabelWidth[colIndex] + params.textGap
+        : svgWidth - textLabelWidth[colIndex] -
+        params.textGap - svgEntryWidth
+      )
+      .attr('y', stackIndex * (svgEntryHeight + params.gap))
+      .attr('width', svgEntryWidth + 2)
+      .attr('height', svgEntryHeight + 2)
+      .attr('viewBox', '-1 -1 ' + (svgEntryWidth + 1) + ' ' +
+        (svgEntryHeight + 1))
+
+    /**
+      *     *   Draw rasterized BED data on the chromosome
+      */
+    params.labels.forEach((label, lblIndex) => {
+      chromosome.drawData(subSvg, label, lblIndex, params)
+    })
+
+    /**
+      *     *   Draw cytoband ideogram (if any) of the chromosome
+      */
+    let chromosomeY = svgEntryHeight -
+      (params.cytobandIdeo
+        ? params.cytobandHeight
+        : params.chromosomeBarHeight)
+    chromosome.drawSelf(subSvg, params, chromosomeY)
+
+    /**
+      *     *   Create chromosomal label **outside** the sub-`<svg>` element
+      */
+    mainSvg.append('text')
+      .attr('x', !colIndex
+        ? textLabelWidth[colIndex]
+        : svgWidth - textLabelWidth[colIndex])
+      .attr('y', stackIndex * (svgEntryHeight + params.gap) +
+        svgEntryHeight / 2 + params.textSize / 2)
+      .attr('text-anchor', !colIndex ? 'end' : 'start')
+      .style('font-family', 'Arial, Helvetica, sans-serif')
+      .style('font-size', params.textSize + 'px')
+      .text(chromosome.name)
+  })
+}
+
+function drawGenomePlot (chromosomes, chromosomeStacks, bedFiles, params) {
   const { document } = (new JSDOM('', { pretendToBeVisual: true })).window
   var mainSvg
 
-  var svgWidth = calcSvgWidth(chromosomeStacks, document)
+  var { svgWidth, textLabelWidth } =
+    calcSvgWidths(chromosomeStacks, document, params)
+  var svgHeight = 0
+  var svgEntryHeight = 0
 
   /**
    * *   Rasterize every chromosome with scale
    * *   Read BED data and put them into the rasters
    */
-  bedFiles.forEach((bedFile, bedFileIndex) => {
-    let label = program.labels[bedFileIndex] || program.args[bedFileIndex]
-    addBedData(bedFile, label, chromosomes)
-  })
+  let validBedFiles = bedFiles.map((bedFile, bedFileIndex) => {
+    let label = params.labels[bedFileIndex] || params.args[bedFileIndex]
+    return addBedData(bedFile, label, chromosomes)
+  }).filter(result => !!result)
 
   /**
    * *   Calculate the size of the final output, build the main `<svg>` element
    */
 
-  var allDataDonePromise = Promise.all(readDataPromise).then(
-    results => results.filter(result => !!result)
-  ).then(results => {
-    svgEntryHeight = results.length * (program.height + program.inGap) +
-      (program.cytobandIdeo
-        ? program.cytobandHeight
-        : program.chromosomeBarHeight)
-    svgHeight = chromosomeStacks.length * (svgEntryHeight + 2 + program.gap) -
-      program.gap
+  svgEntryHeight = validBedFiles.length * (params.height + params.inGap) +
+    (params.cytobandIdeo ? params.cytobandHeight : params.chromosomeBarHeight)
+  svgHeight = chromosomeStacks.length * (svgEntryHeight + 2 + params.gap) -
+    params.gap
 
-    mainSvg = d3.select(document.body).append('svg')
-      .attr('width', svgWidth)
-      .attr('height', svgHeight)
-      .attr('version', 1.1)
-      .attr('xmlns', 'http://www.w3.org/2000/svg')
-    mainSvg.append('defs')
-      .append('pattern')
-      .attr('id', 'hatch_fill')
-      .attr('width', '8')
-      .attr('height', '8')
-      .attr('patternUnits', 'userSpaceOnUse')
-      .attr('patternTransform', 'rotate(60)')
-      .append('rect')
-      .attr('width', '2')
-      .attr('height', '8')
-      .attr('transform', 'translate(0,0)')
-      .attr('fill', '#000000')
-    return results[0]
-  })
+  mainSvg = _createSvgElem(document, svgWidth, svgHeight)
 
   /**
    * *   Draw every chromosome
    */
-  allDataDonePromise = allDataDonePromise.then(chromosomes => {
-    chromosomeStacks.forEach((stackEntry, stackIndex) => {
-      stackEntry.forEach((chromosome, colIndex) => {
-        /**
-         *     *   Create the sub-`<svg>` element at the correct location
-         */
-        let svgEntryWidth = chromosome.end / Chromosome.dataScale + 1
-        let subSvg = mainSvg.append('svg')
-          .attr('x', !colIndex
-            ? textLabelWidth[colIndex] + program.textGap
-            : svgWidth - textLabelWidth[colIndex] -
-            program.textGap - svgEntryWidth
-          )
-          .attr('y', stackIndex * (svgEntryHeight + program.gap))
-          .attr('width', svgEntryWidth + 2)
-          .attr('height', svgEntryHeight + 2)
-          .attr('viewBox', '-1 -1 ' + (svgEntryWidth + 1) + ' ' +
-            (svgEntryHeight + 1))
-
-        /**
-         *     *   Draw rasterized BED data on the chromosome
-         */
-        program.labels.forEach((label, lblIndex) => {
-          chromosome.drawData(subSvg, label, lblIndex, program)
-        })
-
-        /**
-         *     *   Draw cytoband ideogram (if any) of the chromosome
-         */
-        let chromosomeY = svgEntryHeight -
-          (program.cytobandIdeo
-            ? program.cytobandHeight
-            : program.chromosomeBarHeight)
-        chromosome.drawSelf(subSvg, program, chromosomeY)
-
-        /**
-         *     *   Create chromosomal label **outside** the sub-`<svg>` element
-         */
-        mainSvg.append('text')
-          .attr('x', !colIndex
-            ? textLabelWidth[colIndex]
-            : svgWidth - textLabelWidth[colIndex])
-          .attr('y', stackIndex * (svgEntryHeight + program.gap) +
-            svgEntryHeight / 2 + program.textSize / 2)
-          .attr('text-anchor', !colIndex ? 'end' : 'start')
-          .style('font-family', 'Arial, Helvetica, sans-serif')
-          .style('font-size', program.textSize + 'px')
-          .text(chromosome.name)
-      })
-    })
-    return chromosomes
-  })
+  chromosomeStacks.forEach((stackEntry, stackIndex) =>
+    _drawSingleChromosomeStack(stackEntry, stackIndex, mainSvg, svgWidth,
+      svgEntryHeight, textLabelWidth, params)
+  )
 
   /**
    * *   Write the main `<svg>` element to stdout
    */
-  allDataDonePromise.then(chromosomes => {
-    process.stdout.write(d3.select(document.body).html())
-  })
+  return d3.select(document.body).html()
+}
+
+async function createGenomePlot (params) {
+  var readDataPromise = params.args.map(arg =>
+    readFilePromise(arg, 'utf8').catch(err => {
+      console.error(err)
+      return null
+    })
+  )
+  var chromPromise = prepareChromosomeFromFile(params)
+  var bedFiles = await Promise.all(readDataPromise)
+  var { chromosomes, stacks: chromosomeStacks } = await chromPromise
+  return drawGenomePlot(chromosomes, chromosomeStacks, bedFiles, params)
 }
 
 module.exports.drawGenomePlot = drawGenomePlot
-
 module.exports.parseCytobandIdeo = parseCytobandIdeoFile
-
 module.exports.parseChromSizes = parseChromSizeFile
+module.exports.Chromosome = Chromosome
+module.exports.getStackedChromosomes = getStackedChromosomes
+
+module.exports.createGenomePlot = createGenomePlot
