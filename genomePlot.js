@@ -216,6 +216,43 @@ class Chromosome extends ChromRegion {
       .attr('ry', params.cytobandHeight * 0.25)
   }
 
+  drawCentromere (svgElem, y, params) {
+    let points = []
+    points.push({
+      x: this.centromere.start / this.constructor.dataScale,
+      y: y + params.cytobandHeight * 0.15
+    })
+    points.push({
+      x: (this.centromere.start + this.centromere.end) /
+        (2 * this.constructor.dataScale),
+      y: y + params.cytobandHeight * 0.5
+    })
+    points.push({
+      x: this.centromere.end / this.constructor.dataScale,
+      y: y + params.cytobandHeight * 0.15
+    })
+    points.push({
+      x: this.centromere.end / this.constructor.dataScale,
+      y: y + params.cytobandHeight * 0.85
+    })
+    points.push({
+      x: (this.centromere.start + this.centromere.end) /
+        (2 * this.constructor.dataScale),
+      y: y + params.cytobandHeight * 0.5
+    })
+    points.push({
+      x: this.centromere.start / this.constructor.dataScale,
+      y: y + params.cytobandHeight * 0.85
+    })
+    let pointString = points.reduce((result, point) =>
+      (result ? result + ', ' : '') + point.x + ' ' + point.y, '')
+    svgElem.append('polygon')
+      .attr('points', pointString)
+      .attr('stroke', '#444444')
+      .attr('stroke-width', 1)
+      .attr('fill', '#777777')
+  }
+
   drawSelf (svgElem, params, y) {
     if (this.cytobands.length) {
       let arms
@@ -238,6 +275,9 @@ class Chromosome extends ChromRegion {
       } else {
         // draw only one arm
         arms = [this]
+      }
+      if (this.centromere) {
+        this.drawCentromere(svgElem, y, params)
       }
       arms.forEach(arm => this.drawArm(svgElem, y, arm, params))
     } else {
@@ -538,13 +578,13 @@ function _createSvgElem (containerDom, svgWidth, svgHeight) {
   result.append('defs')
     .append('pattern')
     .attr('id', 'hatch_fill')
-    .attr('width', '8')
-    .attr('height', '8')
+    .attr('width', '4')
+    .attr('height', '4')
     .attr('patternUnits', 'userSpaceOnUse')
     .attr('patternTransform', 'rotate(60)')
     .append('rect')
-    .attr('width', '2')
-    .attr('height', '8')
+    .attr('width', '1')
+    .attr('height', '4')
     .attr('transform', 'translate(0,0)')
     .attr('fill', '#000000')
   return result
